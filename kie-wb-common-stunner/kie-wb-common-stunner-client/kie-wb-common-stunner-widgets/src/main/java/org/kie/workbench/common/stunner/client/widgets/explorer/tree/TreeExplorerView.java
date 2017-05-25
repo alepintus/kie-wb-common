@@ -16,6 +16,7 @@
 
 package org.kie.workbench.common.stunner.client.widgets.explorer.tree;
 
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.google.gwt.core.client.GWT;
@@ -44,11 +45,13 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
         this.presenter = presenter;
         initWidget(uiBinder.createAndBindUi(this));
 
+        // TODO Obtain handler registration and remove it once destroying this view instance
         tree.addSelectionHandler(selectionEvent ->
                                  {
                                      final TreeItem item = selectionEvent.getSelectedItem();
                                      final String uuid = item.getUuid();
                                      final Shape shape = presenter.getCanvasHandler().getCanvas().getShape(uuid);
+
                                      if (shape != null) {
                                          presenter.onSelect(uuid);
                                      }
@@ -61,6 +64,8 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
                                      final IsWidget icon,
                                      final TreeItem.Type itemType,
                                      final boolean state) {
+        LOGGER.log(Level.SEVERE,
+                   "addItem uuid:" + uuid);
 
         final TreeItem item = buildItem(uuid,
                                         name,
@@ -69,26 +74,34 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
         tree.addItem(item);
 
         item.setState(getState(state));
+        LOGGER.log(Level.SEVERE,
+                   "addItem done");
         return this;
     }
 
-    @SuppressWarnings("unchecked")
-    public TreeExplorer.View removeItem(final int index) {
-        final TreeItem item = tree.getItem(index);
-        item.removeItems();
-        tree.removeItem(item);
-        return this;
+    public boolean isItemChanged(final String uuid,
+                                 final String name,
+                                 final Long countChildren
+    ) {
+
+        TreeItem oldItem = tree.getItemByUuid(uuid);
+        if (oldItem != null) {
+
+            long[] i = {0};
+
+            oldItem.getChildren().forEach(item -> {
+                i[0]++;}
+            );
+
+
+            if ((!(oldItem.getLabel().equals(name))) ||
+                    (i[0]!=countChildren)){
+                return true;
+            }
+        }
+        return false;
     }
 
-    @SuppressWarnings("unchecked")
-    public TreeExplorer.View removeItem(final int index,
-                                        final int... parentsIds) {
-        final TreeItem parent = getParent(parentsIds);
-        final TreeItem item = parent.getChild(index);
-        item.removeItems();
-        parent.removeItem(item);
-        return this;
-    }
 
     @Override
     public TreeExplorer.View clear() {
@@ -97,18 +110,23 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
     }
 
     public TreeExplorer.View addItem(final String uuid,
+                                     final String parentsUuid,
                                      final String name,
                                      final IsWidget icon,
                                      final TreeItem.Type itemType,
-                                     final boolean state,
-                                     final int... parentsIds) {
+                                     final boolean state) {
+        LOGGER.log(Level.SEVERE,
+                   "1  addItem parentsUuid:" + parentsUuid);
 
         final TreeItem item = buildItem(uuid,
                                         name,
                                         icon,
                                         itemType);
 
-        final TreeItem parent = getParent(parentsIds);
+        final TreeItem parent = tree.getItemByUuid(parentsUuid);
+
+        LOGGER.log(Level.SEVERE,
+                   "2  addItem parentsUuid:" + parent.getUuid());
 
         parent.addItem(itemType,
                        uuid,
@@ -117,7 +135,28 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
 
         parent.setState(getState(state));
         item.setState(getState(state));
+        LOGGER.log(Level.SEVERE,
+                   "addItem with parentsUuid done");
+        return this;
+    }
 
+    public TreeExplorer.View setSelectedItem(final String uuid) {
+        TreeItem selectedItem = tree.getItemByUuid(uuid);
+        if (selectedItem != null) {
+            tree.setSelectedItem(selectedItem,
+                                 false);
+        }
+        return this;
+    }
+
+    public TreeExplorer.View removeItem(String uuid) {
+        LOGGER.log(Level.SEVERE,"******** REMOVE ITEM:"+ uuid);
+
+        TreeItem item = tree.getItemByUuid(uuid);
+
+        if (item != null) {
+            item.remove();
+        }
         return this;
     }
 
