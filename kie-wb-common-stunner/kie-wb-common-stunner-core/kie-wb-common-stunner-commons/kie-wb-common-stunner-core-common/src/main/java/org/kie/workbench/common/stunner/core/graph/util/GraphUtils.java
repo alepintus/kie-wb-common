@@ -21,7 +21,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.kie.workbench.common.stunner.core.api.DefinitionManager;
@@ -37,6 +36,7 @@ import org.kie.workbench.common.stunner.core.graph.content.view.Point2D;
 import org.kie.workbench.common.stunner.core.graph.content.view.View;
 
 public class GraphUtils {
+
     private static Logger LOGGER = Logger.getLogger(GraphUtils.class.getName());
 
     public static Object getProperty(final DefinitionManager definitionManager,
@@ -237,17 +237,9 @@ public class GraphUtils {
 
     @SuppressWarnings("unchecked")
     public static Long countChildren(final Node<?, ? extends Edge> element) {
-        final List<? extends Edge> outEdges = element.getOutEdges();
-        if (null != outEdges) {
-
-                    Long count= outEdges.stream()
-                            .filter(edge -> (edge.getContent() instanceof Child)).count();
-
-            return count;
-        }
-        return Long.valueOf(0);
+        return element.getOutEdges().stream()
+                .filter(edge -> (edge.getContent() instanceof Child)).count();
     }
-
 
     private static String getElementDefinitionId(final DefinitionManager definitionManager,
                                                  final Element<?> element) {

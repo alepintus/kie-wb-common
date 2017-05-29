@@ -16,7 +16,7 @@
 
 package org.kie.workbench.common.stunner.client.widgets.explorer.tree;
 
-import java.util.logging.Level;
+import java.util.function.BiPredicate;
 import java.util.logging.Logger;
 
 import com.google.gwt.core.client.GWT;
@@ -62,11 +62,10 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
     public TreeExplorer.View addItem(final String uuid,
                                      final String name,
                                      final IsWidget icon,
-                                     final TreeItem.Type itemType,
+                                     final boolean isContainer,
                                      final boolean state) {
-        LOGGER.log(Level.SEVERE,
-                   "addItem uuid:" + uuid);
-
+        checkNotExist(uuid);
+        final TreeItem.Type itemType = isContainer ? TreeItem.Type.CONTAINER : TreeItem.Type.ITEM;
         final TreeItem item = buildItem(uuid,
                                         name,
                                         icon,
@@ -74,38 +73,6 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
         tree.addItem(item);
 
         item.setState(getState(state));
-        LOGGER.log(Level.SEVERE,
-                   "addItem done");
-        return this;
-    }
-
-    public boolean isItemChanged(final String uuid,
-                                 final String name,
-                                 final Long countChildren
-    ) {
-
-        TreeItem oldItem = tree.getItemByUuid(uuid);
-        if (oldItem != null) {
-
-            long[] i = {0};
-
-            oldItem.getChildren().forEach(item -> {
-                i[0]++;}
-            );
-
-
-            if ((!(oldItem.getLabel().equals(name))) ||
-                    (i[0]!=countChildren)){
-                return true;
-            }
-        }
-        return false;
-    }
-
-
-    @Override
-    public TreeExplorer.View clear() {
-        tree.clear();
         return this;
     }
 
@@ -113,49 +80,62 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
                                      final String parentsUuid,
                                      final String name,
                                      final IsWidget icon,
-                                     final TreeItem.Type itemType,
+                                     final boolean isContainer,
                                      final boolean state) {
-        LOGGER.log(Level.SEVERE,
-                   "1  addItem parentsUuid:" + parentsUuid);
-
+        checkNotExist(uuid);
+        final TreeItem.Type itemType = isContainer ? TreeItem.Type.CONTAINER : TreeItem.Type.ITEM;
         final TreeItem item = buildItem(uuid,
                                         name,
                                         icon,
                                         itemType);
-
         final TreeItem parent = tree.getItemByUuid(parentsUuid);
-
-        LOGGER.log(Level.SEVERE,
-                   "2  addItem parentsUuid:" + parent.getUuid());
-
         parent.addItem(itemType,
                        uuid,
                        name,
                        icon);
-
         parent.setState(getState(state));
         item.setState(getState(state));
-        LOGGER.log(Level.SEVERE,
-                   "addItem with parentsUuid done");
         return this;
     }
 
-    public TreeExplorer.View setSelectedItem(final String uuid) {
-        TreeItem selectedItem = tree.getItemByUuid(uuid);
-        if (selectedItem != null) {
-            tree.setSelectedItem(selectedItem,
-                                 false);
+    public boolean isItemChanged(final String uuid,
+                                 final String parentUuid,
+                                 final String name) {
+        final TreeItem oldItem = tree.getItemByUuid(uuid);
+        if (isNameChanged().test(oldItem,
+                                 name)) {
+            return true;
         }
+        final TreeItem oldItemParent = oldItem.getParent();
+        final String oldParentUuid = null != oldItemParent ? oldItemParent.getUuid() : null;
+        return ((oldParentUuid == null && parentUuid == null) ||
+                (null != parentUuid && !parentUuid.equals(oldParentUuid)));
+    }
+
+    @Override
+    public TreeExplorer.View clear() {
+        tree.clear();
+        return this;
+    }
+
+    @Override
+    public boolean isContainer(final String uuid) {
+        final TreeItem oldItem = tree.getItemByUuid(uuid);
+        return oldItem.getType().equals(TreeItem.Type.CONTAINER) || oldItem.getType().equals(TreeItem.Type.ROOT);
+    }
+
+    public TreeExplorer.View setSelectedItem(final String uuid) {
+        final TreeItem selectedItem = tree.getItemByUuid(uuid);
+        tree.setSelectedItem(selectedItem,
+                             false);
         return this;
     }
 
     public TreeExplorer.View removeItem(String uuid) {
-        LOGGER.log(Level.SEVERE,"******** REMOVE ITEM:"+ uuid);
-
-        TreeItem item = tree.getItemByUuid(uuid);
-
-        if (item != null) {
-            item.remove();
+        tree.getItemByUuid(uuid).remove();
+        // TODO: Alessio - this is just for ensuring the tree is now working as expected. Remove this once tree is fixed.
+        if (null != tree.getItemByUuid(uuid)) {
+            throw new RuntimeException("THIS SHOULD NEVER HAPPEN!");
         }
         return this;
     }
@@ -173,25 +153,22 @@ public class TreeExplorerView extends Composite implements TreeExplorer.View {
         return item;
     }
 
-    private TreeItem getParent(final int... parentsIds) {
-        TreeItem parent = null;
-        for (int x = 0; x < parentsIds.length - 1; x++) {
-            final int parentIdx = parentsIds[x];
-            if (null == parent) {
-                parent = tree.getItem(parentIdx);
-            } else {
-                parent = parent.getChild(parentIdx);
-            }
-        }
-        return parent;
-    }
-
     private TreeItem.State getState(boolean state) {
         if (state) {
             return TreeItem.State.OPEN;
         } else {
             return TreeItem.State.CLOSE;
         }
+    }
+
+    private void checkNotExist(final String uuid) {
+        if (null != tree.getItemByUuid(uuid)) {
+            throw new RuntimeException("Trying to adding twice the tree item for element [" + uuid + "]");
+        }
+    }
+
+    private BiPredicate<TreeItem, String> isNameChanged() {
+        return (item, name) -> !item.getLabel().equals(name);
     }
 
     interface ViewBinder extends UiBinder<Widget, TreeExplorerView> {

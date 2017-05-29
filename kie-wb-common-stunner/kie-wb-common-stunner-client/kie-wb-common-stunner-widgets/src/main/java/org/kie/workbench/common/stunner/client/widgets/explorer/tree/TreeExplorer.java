@@ -17,6 +17,7 @@
 package org.kie.workbench.common.stunner.client.widgets.explorer.tree;
 
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.annotation.PostConstruct;
@@ -39,7 +40,6 @@ import org.kie.workbench.common.stunner.core.client.canvas.event.registration.Ca
 import org.kie.workbench.common.stunner.core.client.canvas.event.registration.CanvasElementRemovedEvent;
 import org.kie.workbench.common.stunner.core.client.canvas.event.registration.CanvasElementUpdatedEvent;
 import org.kie.workbench.common.stunner.core.client.canvas.event.registration.CanvasElementsClearEvent;
-import org.kie.workbench.common.stunner.core.client.canvas.event.selection.CanvasClearSelectionEvent;
 import org.kie.workbench.common.stunner.core.client.canvas.event.selection.CanvasElementSelectedEvent;
 import org.kie.workbench.common.stunner.core.client.shape.factory.ShapeFactory;
 import org.kie.workbench.common.stunner.core.client.shape.view.glyph.Glyph;
@@ -53,7 +53,6 @@ import org.kie.workbench.common.stunner.core.graph.processing.traverse.content.C
 import org.kie.workbench.common.stunner.core.graph.util.GraphUtils;
 import org.kie.workbench.common.stunner.core.util.DefinitionUtils;
 import org.uberfire.client.mvp.UberView;
-import org.uberfire.ext.widgets.core.client.tree.TreeItem;
 
 // TODO: Use incremental updates, do not visit whole graph on each model update.
 @Dependent
@@ -116,7 +115,8 @@ public class TreeExplorer implements IsWidget {
                                                                             node);
                                                    addItem(parents.get(parents.size() - 1),
                                                            node,
-                                                           expand);
+                                                           expand,
+                                                           false);
                                                    return true;
                                                }
 
@@ -124,7 +124,8 @@ public class TreeExplorer implements IsWidget {
                                                public void startNodeTraversal(final Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge> node) {
                                                    super.startNodeTraversal(node);
                                                    addItem(node,
-                                                           expand);
+                                                           expand,
+                                                           false);
                                                }
                                            });
     }
@@ -191,151 +192,139 @@ public class TreeExplorer implements IsWidget {
     }
 
     void onCanvasElementAddedEvent(final @Observes CanvasElementAddedEvent canvasElementAddedEvent) {
-
         if (checkEventContext(canvasElementAddedEvent)) {
             onElementAdded(canvasElementAddedEvent.getElement());
         }
     }
 
     private void onElementAdded(Element element) {
-
-        LOGGER.log(Level.SEVERE,
-                   "---------------- onElementAdded:" + element.getUUID());
-
-        Element parent = GraphUtils.getParent((Node<?, ? extends Edge>) element);
-
-        addItem(parent,
-                (Node) element,
-                true);
-    }
-
-    private void onElementUpdated(Element element,
-                                  CanvasHandler canvasHandler) {
-        LOGGER.log(Level.SEVERE,
-                   "---------------- onElementUpdated:" + element.getUUID());
-
-        Long count = Long.valueOf(0);
-
-        if (element != null) {
-            GraphUtils.countChildren((Node) element);
-        }
-
-        if (view.isItemChanged(element.getUUID(),
-                               getItemName(element),
-                               count)) {
-
-            boolean hasChildren = GraphUtils.hasChildren((Node<?, ? extends Edge>) element);
-
-            view.removeItem(element.getUUID());
-
-            Element parent = GraphUtils.getParent((Node<?, ? extends Edge>) element);
-
+        if (isValidTreeItem().test(element)) {
+            final Element parent = GraphUtils.getParent((Node<?, ? extends Edge>) element);
             addItem(parent,
                     (Node) element,
+                    true,
                     true);
+        }
+    }
 
-            if (hasChildren) {
-                childrenTraverseProcessor.setRootUUID(element.getUUID()).traverse(canvasHandler.getDiagram().getGraph(),
-                                                                                  new AbstractChildrenTraverseCallback<Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge>, Edge<Child, Node>>() {
+    @SuppressWarnings("unchecked")
+    private void onElementUpdated(Element element,
+                                  CanvasHandler canvasHandler) {
+        if (isValidTreeItem().test(element)) {
+            final Element lane = GraphUtils.getParent((Node<?, ? extends Edge>) element);
 
-                                                                                      @Override
-                                                                                      public boolean startNodeTraversal(final List<Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge>> parents,
-                                                                                                                        final Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge> node) {
-                                                                                          super.startNodeTraversal(parents,
-                                                                                                                   node);
-                                                                                          addItem(parents.get(parents.size() - 1),
-                                                                                                  node,
-                                                                                                  true);
-                                                                                          return true;
-                                                                                      }
+            if (view.isItemChanged(element.getUUID(),
+                                   null != lane ? lane.getUUID() : null,
+                                   getItemName(element))) {
 
-                                                                                      @Override
-                                                                                      public void startNodeTraversal(final Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge> node) {
-                                                                                          super.startNodeTraversal(node);
-                                                                                          addItem(node,
-                                                                                                  true);
-                                                                                      }
-                                                                                  });
+                view.removeItem(element.getUUID());
+                addItem(lane,
+                        (Node) element,
+                        true,
+                        true);
+
+                final boolean hasChildren = GraphUtils.hasChildren((Node<?, ? extends Edge>) element);
+                if (hasChildren) {
+                    childrenTraverseProcessor
+                            .setRootUUID(element.getUUID())
+                            .traverse(canvasHandler.getDiagram().getGraph(),
+                                      new AbstractChildrenTraverseCallback<Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge>, Edge<Child, Node>>() {
+
+                                          @Override
+                                          public boolean startNodeTraversal(final List<Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge>> parents,
+                                                                            final Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge> node) {
+                                              super.startNodeTraversal(parents,
+                                                                       node);
+                                              addItem(parents.get(parents.size() - 1),
+                                                      node,
+                                                      true,
+                                                      false);
+                                              return true;
+                                          }
+
+                                          @Override
+                                          public void startNodeTraversal(final Node<org.kie.workbench.common.stunner.core.graph.content.view.View, Edge> node) {
+                                              super.startNodeTraversal(node);
+                                              addItem(node,
+                                                      true,
+                                                      false);
+                                          }
+                                      });
+                }
             }
         }
     }
 
     private void onElementRemoved(Element element) {
-        LOGGER.log(Level.SEVERE,
-                   "onElementRemoved:" + element.getUUID());
-        String uuid = element.getUUID();
-        view.removeItem(uuid);
+        if (isValidTreeItem().test(element)) {
+            String uuid = element.getUUID();
+            view.removeItem(uuid);
+        }
     }
 
-    private void addItem(Element parent,
-                         Node item,
-                         boolean expand) {
+    @SuppressWarnings("unchecked")
+    private void addItem(final Element parent,
+                         final Node element,
+                         final boolean expand,
+                         final boolean checkParent) {
+        final boolean isContainer = isContainer().test(element);
+        final Glyph ico = getGlyph(getShapeSetId(),
+                                   element);
+        final String name = getItemName(element);
+        final LienzoPanel icon = LienzoPanelUtils.newPanel(ico,
+                                                           icoWidth,
+                                                           icoHeight);
 
-        LOGGER.log(Level.SEVERE,
-                   "*** ITEM : " + item.getUUID());
-        if (parent != null) {
-            LOGGER.log(Level.SEVERE,
-                       "*** PARENT : " + parent.getUUID());
-        }
-        TreeItem.Type itemType;
-        Glyph ico = getGlyph(getShapeSetId(),
-                             item);
-
-        LienzoPanel icon = LienzoPanelUtils.newPanel(ico,
-                                                     icoWidth,
-                                                     icoHeight);
-
-        String name = getItemName(item);
-        if (GraphUtils.hasChildren(item)) {
-            itemType = TreeItem.Type.CONTAINER;
-        } else {
-            itemType = TreeItem.Type.ITEM;
-        }
-
-        if (parent != null) {
-            Long count = GraphUtils.countChildren((Node) parent);
-
-            // If item is the first child added to the parent change the type of the parent from ITEM to CONTAINER
-            if (count == 1) {
-                Glyph parentIco = getGlyph(getShapeSetId(),
-                                           parent);
-
-                LienzoPanel parentIcon = LienzoPanelUtils.newPanel(parentIco,
-                                                                   icoWidth,
-                                                                   icoHeight);
-
-                    view.removeItem(parent.getUUID());
-
-                    view.addItem(parent.getUUID(),
-                                 GraphUtils.getParent((Node<?, ? extends Edge>) parent).getUUID(),
-                                 getItemName(parent),
-                                 parentIcon,
-                                 TreeItem.Type.CONTAINER,
-                                 expand);
-
+        // Check the parent, in case a TreeItem mutates from/to ITEM type to CONTAINER type.
+        final boolean isValidParentItem = null != parent && isValidTreeItem().test(parent);
+        if (checkParent && isValidParentItem) {
+            final boolean isParentContainer = isContainer().test((Node) parent);
+            final boolean wasParentContainer = view.isContainer(parent.getUUID());
+            if (isParentContainer != wasParentContainer) {
+                view.removeItem(parent.getUUID());
+                addItem(GraphUtils.getParent((Node<?, ? extends Edge>) parent),
+                        (Node) parent,
+                        expand,
+                        false);
             }
+        }
 
-            view.addItem(item.getUUID(),
+        // Create and add the tree item.
+        if (isValidParentItem) {
+            view.addItem(element.getUUID(),
                          parent.getUUID(),
                          name,
                          icon,
-                         itemType,
-                         expand
-            );
+                         isContainer,
+                         expand);
         } else {
-            view.addItem(item.getUUID(),
+            view.addItem(element.getUUID(),
                          name,
                          icon,
-                         itemType,
+                         isContainer,
                          expand);
         }
     }
 
+    private Predicate<Node> isContainer() {
+        return e -> GraphUtils.countChildren(e) > 0;
+    }
+
+    private Predicate<Element<?>> isValidTreeItem() {
+        return isViewElement();
+    }
+
+    private Predicate<Element<?>> isViewElement() {
+        return e -> (null != e && (!(e instanceof Edge)) && (e.getContent() instanceof org.kie.workbench.common.stunner.core.graph.content.view.View));
+    }
+
     private void addItem(final Node item,
-                         final boolean expand) {
+                         final boolean expand,
+                         final boolean checkParent) {
         addItem(null,
                 item,
-                expand);
+                expand,
+                checkParent);
     }
 
     void onCanvasElementRemovedEvent(final @Observes CanvasElementRemovedEvent elementRemovedEvent) {
@@ -345,7 +334,6 @@ public class TreeExplorer implements IsWidget {
     }
 
     void onCanvasElementsClearEvent(final @Observes CanvasElementsClearEvent canvasClearEvent) {
-
         if (checkEventContext(canvasClearEvent)) {
             LOGGER.log(Level.SEVERE,
                        "onCanvasElementsClearEvent");
@@ -354,7 +342,6 @@ public class TreeExplorer implements IsWidget {
     }
 
     void onCanvasElementUpdatedEvent(final @Observes CanvasElementUpdatedEvent canvasElementUpdatedEvent) {
-
         if (checkEventContext(canvasElementUpdatedEvent)) {
             onElementUpdated(canvasElementUpdatedEvent.getElement(),
                              canvasElementUpdatedEvent.getCanvasHandler());
@@ -372,10 +359,6 @@ public class TreeExplorer implements IsWidget {
                 }
             }
         }
-    }
-
-    private void checkNotNull(String clearSelectionEvent,
-                              CanvasClearSelectionEvent clearSelectionEvent1) {
     }
 
     private boolean checkEventContext(final AbstractCanvasHandlerEvent canvasHandlerEvent) {
@@ -423,14 +406,14 @@ public class TreeExplorer implements IsWidget {
         View addItem(final String uuid,
                      final String name,
                      final IsWidget icon,
-                     final TreeItem.Type itemType,
+                     final boolean isContainer,
                      final boolean state);
 
         View addItem(final String uuid,
                      final String parentUuid,
                      final String name,
                      final IsWidget icon,
-                     final TreeItem.Type itemType,
+                     final boolean isContainer,
                      final boolean state);
 
         View setSelectedItem(final String uuid);
@@ -440,7 +423,9 @@ public class TreeExplorer implements IsWidget {
         View clear();
 
         boolean isItemChanged(final String uuid,
-                              final String name,
-                              final Long countChildren);
+                              final String parentUuid,
+                              final String name);
+
+        boolean isContainer(final String uuid);
     }
 }
